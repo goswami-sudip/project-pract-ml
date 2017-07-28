@@ -1,0 +1,117 @@
+---
+title: "Pract_ML_Project"
+author: "Sudip Goswami"
+date: "July 28, 2017"
+output: html_document
+---
+###Project Goal: 
+The data for this project comes from http://groupware.les.inf.puc-rio.br/har. Here, six participants were asked to barbell lifts correctly and incorrectly in 5 different ways and data was recorded on the belt, forearm, arm and dumbell. The goal of this project is to predict the manner in which the six participants did the exercise.
+
+###Datasets: 
+There were two sets of data, a. pml-training.csv and b. pml-testing.csv, which were downloaded from the websites https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv and https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv respectively. The testing data is part of the quiz. Here we will mainly focus on the training data.
+
+
+###Preprocessing of Data:
+ A cursory look at the training data shows that it has many variables with a lot of missing values or NA. So, first, these variables are removed from the training data.
+ 
+ ```{r echo = FALSE}
+ setwd("C:/Users/juna/Desktop")
+ ```
+
+ ```{r echo = TRUE}
+ pml <- read.csv("pml-training.csv")
+ ctg <- which(colSums(is.na(pml))>500) # selecting the columns with more than 500 NAs 
+ pml_1 <- pml[, - c(ctg)]              # removing the columns with more than 500 NAs
+ ```
+ 
+ It is further observed that there are many factor variables and many of them have more than 53 levels, as I am planning to use random forest algorithm for building the model, those factor variables are also removed.
+ 
+ ```{r echo = TRUE}
+ x <- c("max", "min", "kurtosis", "skewness", "amplitude")
+ mctg <- which(grepl(paste(x, collapse = "|"), colnames(pml_1)))
+ pml_2<- pml_1[, -c(mctg)]
+ ```
+ Now it is checked if there is any column/variable in the pruned dataset with missing values, and it is found (result not shown here) that there is no column/variable with missing values.
+ 
+ ```{r echo= TRUE, eval = FALSE}
+ summary(pml_2)
+ str(pml_2)
+ ```
+ Finally first 7 columns are removed as they are not relevant for prediction.
+ 
+ ```{r echo = TRUE}
+ pml_3<- pml_2[,-c(1:7)]
+ ```
+Now, random forest algorithm is selected because it offers many advantages some of which are as follows:
+1. It is highly accurate.
+2. It works well on large databases.
+3. It can handle many input variables.
+4. It also gives estimates of variables that are important for the classification.
+
+####Splitting the training data into train and test set
+```{r echo = TRUE}
+library(caret)
+set.seed(100)
+inTrain<- createDataPartition(y= pml_3$classe, p = 0.7, list = FALSE)
+train <- pml_3[inTrain,]
+test <- pml_3[-inTrain,]
+x<- train[,-53]
+y <-train[,53]
+```
+For building the model, 10-fold cross validation is used.
+
+####Building the model
+```{r echo = TRUE}
+modFitControl <-trainControl(method = "cv", number = 10)
+set.seed(100)
+modFit <- train(x,y, method = "rf", data = pml_3, trControl = modFitControl)
+```
+
+To get OOB(out of bag) error estimate and confusion matrix
+
+```{r echo = TRUE}
+modFit$finalModel
+```
+As can be seen the OOB error estimate is 0.79%
+
+To get accuracy and kappa values versus mtry
+
+```{r echo = TRUE}
+modFit
+```
+As shown here the final value used for the model was mtry = 2
+
+To get accuracies on hold-out folds
+```{r}
+modFit$resample
+```
+To get cross-validated Confusion Matrix
+
+```{r echo = TRUE}
+confusionMatrix.train(modFit)
+```
+The average accuracy is 0.9909 i.e 99.09%
+
+###Prediction the testing Dataset
+```{r echo = TRUE}
+testing <- read.csv("pml-testing.csv")
+pred1 <- predict(modFit, newdata = testing)
+pred1
+```
+All 20 predictions are correct.
+
+Now let us see the relative importance of the 52 predictors used for this model in a plot
+
+```{r echo = TRUE}
+plot(varImp(modFit), main = "Importance of Variables", top = 52) #All 52 predictors
+plot(varImp(modFit), main = "Importance of Variables", top = 26)#First 26 predictors
+```
+Finally, the model is tested on the hold-out test data which was not used for building the model
+
+```{r echo = TRUE}
+pred2<- predict(modFit, newdata = test)
+table(test$classe, pred2)
+(1673+1128+1020+950+1081)/nrow(test)
+1-0.9943925
+```
+So, the out of sample accuracy of the model based on the prediction on the test data is 0.9943925 i.e. around 99.44%, hence the out of sample error rate is approximately 0.56%. This concludes this analysis.
